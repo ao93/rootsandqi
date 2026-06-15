@@ -297,3 +297,252 @@ A future improvement would be to retrieve top-N results *per tradition*
 separately (e.g., top 3 TCM + top 3 Indigenous) and merge them, guaranteeing
 cross-tradition representation in every response — directly supporting the
 project's core differentiator of bridging both traditions.
+
+---
+
+# Milestone 3: MLOps - DVC Dataset Versioning
+
+## Issue 6: `pathspec` version conflict breaking DVC
+
+**Symptom**
+
+```bash
+dvc add app/data/herbs.json
+```
+
+failed with:
+
+```
+ERROR: unexpected error - cannot import name '_DIR_MARK' from
+'pathspec.patterns.gitwildmatch'
+```
+
+**Root cause**
+
+The installed version of the `pathspec` package was incompatible with the
+version DVC expects — a newer `pathspec` release removed/renamed an internal
+symbol (`_DIR_MARK`) that DVC's code imports directly.
+
+**Fix**
+
+Pinned `pathspec` to a compatible range:
+
+```bash
+pip install "pathspec>=0.10.3,<0.13"
+```
+
+**Takeaway**
+
+Same general class of issue as the Python 3.14/pydantic-core problem from
+Milestone 1 — a fast-moving dependency (here, `pathspec`) outpacing what a
+less-frequently-updated tool (DVC) expects. Pinning the conflicting transitive
+dependency directly resolves it without needing to change DVC's version.
+
+---
+
+## Issue 7: Google blocked DVC's default OAuth client for Google Drive access
+
+**Symptom**
+
+Running `dvc push` for the first time opened a browser tab, but Google
+returned:
+
+```
+This app is blocked
+This app tried to access sensitive info in your Google Account. To keep your
+account safe, Google blocked this access.
+```
+
+**Root cause**
+
+DVC's `gdrive` remote ships with a default shared OAuth client ID. Google has
+restricted/blocked this shared client for the Drive scopes DVC requests,
+likely due to it being a well-known shared credential used by many DVC users
+(a common target for blocking/abuse prevention).
+
+**Fix**
+
+Created a personal Google Cloud OAuth client so DVC authenticates as "my own
+app" instead of the blocked shared one:
+
+1. Created a new Google Cloud project (`rootsandqi-dvc`)
+2. Enabled the Google Drive API for that project
+3. Configured the OAuth consent screen (External user type, app name, support/
+   developer email)
+4. Added my own Google account as a **test user** (required since the app is
+   in "Testing" publishing status, not verified)
+5. Created an OAuth 2.0 Client ID of type **Desktop app**, obtaining a Client
+   ID and Client Secret
+6. Configured DVC to use these credentials:
+
+   ```bash
+   dvc remote modify gdrive_remote gdrive_client_id '<client-id>'
+   dvc remote modify gdrive_remote gdrive_client_secret '<client-secret>'
+   ```
+
+**Takeaway**
+
+For any project using DVC + Google Drive remotes beyond quick personal
+experiments, expect to set up your own OAuth client in Google Cloud Console.
+This is a one-time setup per machine/credential-set, and is genuinely the same
+category of IAM/OAuth configuration work involved in setting up real cloud
+integrations (e.g., a service's own OAuth app for a third-party API).
+
+---
+
+## Issue 8: "Access blocked... has not completed the Google verification process"
+
+**Symptom**
+
+After switching to a personal OAuth client (Issue 7), `dvc push` produced a
+new error:
+
+```
+Access blocked: RootsAndQi DVC has not completed the Google verification process
+Error 403: access_denied
+```
+
+**Root cause**
+
+A newly-created OAuth app starts in "Testing" publishing status. In this
+status, Google only allows sign-in from accounts explicitly added as **test
+users** on the OAuth consent screen — even the developer's own account, if not
+added.
+
+**Fix**
+
+In Google Cloud Console, navigated to the Audience page
+(`console.cloud.google.com/auth/audience`) for the OAuth consent
+configuration, and added my own Google account email under **Test users**.
+
+**Takeaway**
+
+"Testing" mode is a safe default for unverified OAuth apps, but it's an
+allowlist — every account that needs to authenticate (including the
+developer's own) must be added explicitly. This is a common first-time gotcha
+when setting up any new OAuth app, not specific to DVC.
+
+---
+
+## Issue 9: `dvc push` failed with stale lock file
+
+**Symptom**
+
+```
+ERROR: failed to push data to the cloud - Unable to acquire lock. Most likely
+another DVC process is running or was terminated abruptly.
+```
+
+**Root cause**
+
+A previous `dvc push` attempt (which failed during the OAuth block in Issue 7)
+left behind lock files under `.dvc/tmp/` (`lock`, `rwlock`) that weren't
+cleaned up when the process exited abnormally.
+
+**Fix**
+
+```bash
+rm -f .dvc/tmp/lock .dvc/tmp/rwlock
+```
+
+then retried `dvc push`.
+
+**Takeaway**
+
+Many CLI tools (DVC, Terraform, etc.) use lock files to prevent concurrent
+runs from corrupting state. When a process is killed or errors out ungracefully,
+stale locks can remain and need manual cleanup — worth knowing this pattern
+generally, not just for DVC.
+
+---
+
+## Issue 10: `dvc push` failed — local web server for OAuth redirect couldn't start
+
+**Symptom**
+
+```
+Failed to start a local web server. Please check your firewall settings and
+locally running programs that may be blocking or using configured ports.
+Default ports are 8080 and 8090.
+ERROR: unexpected error - Failed to authenticate GDrive
+```
+
+**Root cause**
+
+DVC's OAuth flow runs a temporary local web server on port 8080 (or 8090) to
+receive the redirect from Google after authentication. Both ports were already
+occupied by leftover Python processes from earlier `uvicorn` and `mlflow ui`
+sessions that hadn't been stopped cleanly (`Ctrl+C` in a different terminal
+tab, process kept running in the background).
+
+**Fix**
+
+Identified and killed the stale processes:
+
+```bash
+lsof -i :8080
+lsof -i :8090
+kill -9 <pid1> <pid2>
+```
+
+then retried `dvc push`, which completed the OAuth flow successfully.
+
+**Takeaway**
+
+When running multiple local services (API server, MLflow UI, DVC, etc.) across
+several terminal tabs, it's easy to accumulate orphaned processes holding onto
+ports. `lsof -i :<port>` is the general-purpose way to find what's bound to a
+port before assuming a tool's default port is "free."
+
+---
+
+## Issue 11: `dvc add` refused — file already tracked by git
+
+**Symptom**
+
+```
+ERROR: output 'app/data/herbs.json' is already tracked by SCM (e.g. Git).
+You can remove it from Git, then add to DVC.
+```
+
+**Root cause**
+
+`herbs.json` was committed to git directly in Milestone 2, before DVC was
+introduced in Milestone 3. DVC and git can't both track the same file's
+content directly — DVC expects to own the file via its `.dvc` pointer +
+`.gitignore` entry instead.
+
+**Fix**
+
+```bash
+git rm --cached app/data/herbs.json
+git commit -m "Stop tracking herbs.json with git, use DVC instead"
+dvc add app/data/herbs.json
+```
+
+After this, `app/data/herbs.json` is gitignored (via the `.gitignore` DVC
+generated), and `app/data/herbs.json.dvc` (a small pointer file with the
+content hash) is committed to git instead.
+
+**Takeaway**
+
+When retrofitting DVC onto a file that's already in git history, the file must
+first be untracked from git (`git rm --cached`, which keeps it on disk) before
+`dvc add` can take it over. This is a one-time migration step per file.
+
+---
+
+## Result (Milestone 3 - DVC)
+
+After resolving Issues 6-11:
+
+- `app/data/herbs.json` is tracked by DVC, with its actual content stored in a
+  Google Drive remote (via a personal OAuth client) and only a small `.dvc`
+  pointer file (`app/data/herbs.json.dvc`, containing an md5 hash and size)
+  committed to git.
+- The OAuth client secret is stored in `.dvc/config.local` (gitignored),
+  keeping it out of version control while `.dvc/config` (committed) contains
+  only the non-sensitive remote URL.
+- `dvc push` succeeded: `1 file pushed`.
+- Future changes to `herbs.json` follow the documented workflow: edit ->
+  re-index Qdrant -> `dvc add` -> `dvc push` -> commit the updated `.dvc` file.
