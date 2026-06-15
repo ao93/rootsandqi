@@ -1,0 +1,5 @@
+outs:
+- md5: 8738e006809e49d3eabdf32691bcbc6f
+  size: 8304
+  hash: md5
+  path: herbs.json

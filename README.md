@@ -8,12 +8,13 @@ FastAPI + LangChain + MLOps + Kubernetes stack.
 > not provide medical diagnoses and is not a substitute for professional medical
 > care.
 
-## Status: Milestone 3 (in progress) — MLOps: Experiment Tracking
+## Status: Milestone 3 (in progress) — MLOps: Experiment Tracking + Dataset Versioning
 
 Milestones 1-2 implemented the syndrome-mapping pipeline and herb retrieval.
-Milestone 3 adds MLOps tooling, starting with experiment tracking:
+Milestone 3 adds MLOps tooling:
 
-- Every `POST /diagnose` call is logged as an MLflow run, capturing:
+- **Experiment tracking (MLflow)**: every `POST /diagnose` call is logged as
+  an MLflow run, capturing:
   - **Params**: LLM provider/model, prompt version, whether a tongue
     observation was provided, symptom text length
   - **Metrics**: classification confidence, number of secondary patterns,
@@ -21,13 +22,19 @@ Milestone 3 adds MLOps tooling, starting with experiment tracking:
   - **Tags**: primary syndrome pattern, top herb ID/tradition, set of herb
     traditions returned (useful for investigating the Indigenous/TCM
     retrieval balance noted in [BUILD_LOG.md](BUILD_LOG.md))
-- MLflow tracking is provider-agnostic: defaults to local file-based tracking
-  (`./mlruns`, no server needed), or can point at a Dockerized MLflow tracking
-  server for a shared UI.
-- Tracking is best-effort and never breaks `/diagnose` if logging fails.
+  - MLflow tracking is provider-agnostic: defaults to local file-based tracking
+    (`./mlruns`, no server needed), or can point at a Dockerized MLflow
+    tracking server for a shared UI. Tracking is best-effort and never breaks
+    `/diagnose` if logging fails.
 
-DVC (dataset versioning) and Airflow (scheduled re-indexing) are planned next
-within Milestone 3.
+- **Dataset versioning (DVC)**: `app/data/herbs.json` is tracked with DVC,
+  using a Google Drive remote for storing dataset versions. Every change to
+  the herb knowledge base can be versioned, pushed, and rolled back
+  independently of the Qdrant index or application code — see
+  [Expanding the herb knowledge base](#expanding-the-herb-knowledge-base-with-dvc-versioning)
+  below.
+
+Airflow (scheduled re-indexing) is planned next within Milestone 3.
 
 ## Project Structure
 
@@ -165,23 +172,76 @@ similarity to the identified syndrome pattern(s), each with a `relevance_score`.
 > *per tradition* and merging them, to guarantee both TCM and Indigenous herbs
 > appear when relevant — directly supporting the project's core differentiator.
 
-## Expanding the herb knowledge base
+## Expanding the herb knowledge base (with DVC versioning)
 
-The herb knowledge base lives in `app/data/herbs.json` as a simple list of
-entries. To add a new herb:
+The herb knowledge base lives in `app/data/herbs.json` and is version-controlled
+with [DVC](https://dvc.org), with a Google Drive remote for storing dataset
+versions separately from git history. This means every change to the herb
+dataset is tracked as a distinct version, retrievable later — useful for
+auditing "what did the knowledge base look like when this diagnosis was made"
+or rolling back a bad edit.
 
-1. Add a new entry to `app/data/herbs.json` following the existing structure
-   (`id`, `name`, `tradition`, `syndromes`, `description`, `preparation`,
-   `cautions`). `syndromes` values must match the `TCMSyndrome` enum values
-   defined in `app/models/diagnosis.py`.
-2. Re-run the indexing script:
+### One-time setup (per machine)
+
+1. Install dependencies (already includes `dvc[gdrive]`):
 
    ```bash
-   python scripts/index_herbs.py
+   pip install -r requirements.txt
    ```
 
-   This recreates the Qdrant collection with the updated herb set — no code
-   changes required.
+2. Create a folder in your Google Drive (e.g. "rootsandqi-dvc-storage"), open
+   it, and copy the folder ID from the URL:
+   `https://drive.google.com/drive/folders/`**`<this-part-is-the-folder-id>`**
+
+3. Set the DVC remote to point at that folder:
+
+   ```bash
+   dvc remote modify gdrive_remote url gdrive://<your-folder-id>
+   ```
+
+4. The first time you run `dvc push`, a browser window will open asking you
+   to authorize DVC to access that Google Drive folder. Approve it — this is
+   a one-time OAuth step per machine.
+
+### Adding or updating herbs
+
+1. Edit `app/data/herbs.json` — add a new entry following the existing
+   structure (`id`, `name`, `tradition`, `syndromes`, `description`,
+   `preparation`, `cautions`). `syndromes` values must match the
+   `TCMSyndrome` enum values defined in `app/models/diagnosis.py`.
+
+2. Re-run the indexing script to update Qdrant:
+
+   ```bash
+   python -m scripts.index_herbs
+   ```
+
+3. Track the new version with DVC and push it to the remote:
+
+   ```bash
+   dvc add app/data/herbs.json
+   dvc push
+   ```
+
+4. Commit the small `.dvc` pointer file to git (the actual data lives in the
+   DVC remote, not git):
+
+   ```bash
+   git add app/data/herbs.json.dvc
+   git commit -m "Update herb knowledge base: add <herb name>"
+   git push
+   ```
+
+### Retrieving a previous version
+
+```bash
+git checkout <previous-commit> -- app/data/herbs.json.dvc
+dvc pull
+python -m scripts.index_herbs
+```
+
+This checks out an older `.dvc` pointer, pulls the corresponding data version
+from Google Drive, and re-indexes Qdrant to match.
 
 ## Roadmap
 
@@ -189,7 +249,7 @@ entries. To add a new herb:
 - [x] Milestone 2: Indigenous + TCM herb knowledge base (Qdrant retrieval)
 - [ ] Milestone 3: MLOps layer
   - [x] MLflow experiment tracking for /diagnose runs
-  - [ ] DVC dataset versioning for herbs.json
+  - [x] DVC dataset versioning for herbs.json (Google Drive remote)
   - [ ] Airflow scheduled re-indexing
 - [ ] Milestone 4: Minimal web UI
 - [ ] Milestone 5: DevOps/infra wrap (Terraform, EKS, CI/CD, Trivy, Prometheus/Grafana)
