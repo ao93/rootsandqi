@@ -8,18 +8,26 @@ FastAPI + LangChain + MLOps + Kubernetes stack.
 > not provide medical diagnoses and is not a substitute for professional medical
 > care.
 
-## Status: Milestone 2 — Herb Knowledge Base + Retrieval
+## Status: Milestone 3 (in progress) — MLOps: Experiment Tracking
 
-Milestone 1 implemented the syndrome-mapping pipeline. Milestone 2 adds:
+Milestones 1-2 implemented the syndrome-mapping pipeline and herb retrieval.
+Milestone 3 adds MLOps tooling, starting with experiment tracking:
 
-- A knowledge base of 15 TCM and Indigenous herbs (`app/data/herbs.json`), each
-  tagged with the TCM syndrome patterns they're traditionally associated with.
-- A Qdrant-backed vector retrieval layer: herb descriptions are embedded
-  (via a local Ollama embedding model) and indexed into Qdrant.
-- `POST /diagnose` now returns `herb_recommendations` alongside the syndrome
-  classification — herbs are retrieved by vector similarity to the identified
-  syndrome pattern(s), spanning both TCM and Indigenous traditions.
-- `GET /health` — basic health check.
+- Every `POST /diagnose` call is logged as an MLflow run, capturing:
+  - **Params**: LLM provider/model, prompt version, whether a tongue
+    observation was provided, symptom text length
+  - **Metrics**: classification confidence, number of secondary patterns,
+    number of herb recommendations, top herb relevance score
+  - **Tags**: primary syndrome pattern, top herb ID/tradition, set of herb
+    traditions returned (useful for investigating the Indigenous/TCM
+    retrieval balance noted in [BUILD_LOG.md](BUILD_LOG.md))
+- MLflow tracking is provider-agnostic: defaults to local file-based tracking
+  (`./mlruns`, no server needed), or can point at a Dockerized MLflow tracking
+  server for a shared UI.
+- Tracking is best-effort and never breaks `/diagnose` if logging fails.
+
+DVC (dataset versioning) and Airflow (scheduled re-indexing) are planned next
+within Milestone 3.
 
 ## Project Structure
 
@@ -37,8 +45,9 @@ app/
 │   ├── diagnosis.py      # Pydantic request/response/schema models
 │   └── herb.py           # Herb and HerbRecommendation models
 └── services/
-    ├── syndrome_mapper.py  # LangChain pipeline: LLM call -> structured output
-    └── herb_retriever.py   # Qdrant indexing + vector retrieval for herbs
+    ├── syndrome_mapper.py    # LangChain pipeline: LLM call -> structured output
+    ├── herb_retriever.py     # Qdrant indexing + vector retrieval for herbs
+    └── experiment_tracker.py # MLflow run logging for /diagnose calls
 
 scripts/
 └── index_herbs.py       # CLI script to (re)index herbs.json into Qdrant
@@ -116,6 +125,18 @@ scripts/
 
 8. Open the interactive docs at `http://localhost:8000/docs`.
 
+9. (Optional) View MLflow experiment runs. By default, runs are logged to a
+   local `./mlruns` folder. To browse them in the MLflow UI:
+
+   ```bash
+   mlflow ui --backend-store-uri ./mlruns
+   ```
+
+   Then open `http://localhost:5000` to see each `/diagnose` call as a run,
+   with its params (LLM provider/model, prompt version), metrics (confidence,
+   herb relevance scores), and tags (syndrome pattern, herb traditions
+   returned).
+
 ## Example request
 
 ```bash
@@ -166,7 +187,10 @@ entries. To add a new herb:
 
 - [x] Milestone 1: AI diagnostic core (FastAPI + LangChain syndrome mapping)
 - [x] Milestone 2: Indigenous + TCM herb knowledge base (Qdrant retrieval)
-- [ ] Milestone 3: MLOps layer (MLflow, DVC, Airflow)
+- [ ] Milestone 3: MLOps layer
+  - [x] MLflow experiment tracking for /diagnose runs
+  - [ ] DVC dataset versioning for herbs.json
+  - [ ] Airflow scheduled re-indexing
 - [ ] Milestone 4: Minimal web UI
 - [ ] Milestone 5: DevOps/infra wrap (Terraform, EKS, CI/CD, Trivy, Prometheus/Grafana)
 - [ ] Milestone 6: Compliance docs + polish

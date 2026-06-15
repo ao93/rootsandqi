@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "herbs"
 
+    # MLflow settings
+    # - File-based (default): leave as "./mlruns" for a local folder, no server needed
+    # - Server-based: set to "http://localhost:5000" when running MLflow via Docker
+    mlflow_tracking_uri: str = "./mlruns"
+    mlflow_experiment_name: str = "rootsandqi-diagnosis"
+
+    # Prompt version label - bump this when SYNDROME_MAPPING_SYSTEM_PROMPT changes
+    syndrome_prompt_version: str = "v1"
+
     app_name: str = "RootsAndQi"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

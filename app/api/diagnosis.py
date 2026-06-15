@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models.diagnosis import DiagnosisRequest, DiagnosisResponse
+from app.services.experiment_tracker import log_diagnosis_run
 from app.services.herb_retriever import retrieve_herbs_for_syndrome
 from app.services.syndrome_mapper import classify_syndrome
 
@@ -13,7 +14,8 @@ def diagnose(request: DiagnosisRequest) -> DiagnosisResponse:
     Accepts symptom text and an optional tongue observation, runs the
     syndrome-mapping pipeline, retrieves relevant TCM + Indigenous herbs
     from the Qdrant knowledge base based on the identified syndrome
-    pattern(s), and returns a structured response with both.
+    pattern(s), logs the run to MLflow, and returns a structured response
+    with both.
     """
     try:
         classification = classify_syndrome(request)
@@ -29,6 +31,8 @@ def diagnose(request: DiagnosisRequest) -> DiagnosisResponse:
         # Retrieval failure shouldn't block returning the syndrome
         # classification itself - degrade gracefully with no recommendations.
         herb_recommendations = []
+
+    log_diagnosis_run(request, classification, herb_recommendations)
 
     return DiagnosisResponse(
         classification=classification,
