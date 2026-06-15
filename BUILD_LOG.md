@@ -1,9 +1,12 @@
-# Build Log — Milestone 1: AI Diagnostic Core
+# Build Log — RootsAndQi
 
-This log documents the real issues encountered while setting up and running the
-Milestone 1 environment (FastAPI + LangChain + Ollama syndrome-mapping pipeline),
-along with root cause analysis and fixes. Kept for reference and as a record of
-the debugging process.
+This log documents real issues encountered while setting up and running the
+RootsAndQi environment across milestones, along with root cause analysis and
+fixes. Kept for reference and as a record of the debugging process.
+
+---
+
+# Milestone 1: AI Diagnostic Core
 
 ---
 
@@ -146,7 +149,7 @@ pattern when environment issues are suspected.
 
 ---
 
-## Result
+## Result (Milestone 1)
 
 After resolving all three issues, the API started successfully:
 
@@ -162,3 +165,135 @@ Both endpoints were verified working:
   Deficiency, confidence 0.8, correct reasoning referencing both the symptom
   description and tongue observation) from a local Llama 3 model via Ollama —
   no paid API calls required for development.
+
+---
+
+# Milestone 2: Herb Knowledge Base + Qdrant Retrieval
+
+## Issue 4: Docker daemon not running
+
+**Symptom**
+
+```bash
+docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
+```
+
+failed with:
+
+```
+failed to connect to the docker API at unix:///Users/adolfo/.docker/run/docker.sock;
+check if the path is correct and if the daemon is running: dial unix
+/Users/adolfo/.docker/run/docker.sock: connect: no such file or directory
+```
+
+**Root cause**
+
+The Docker CLI was installed (`which docker` →
+`/usr/local/bin/docker`), but Docker Desktop (the application that runs the
+Docker daemon on macOS) was not running. The CLI can't communicate with a
+daemon that isn't up.
+
+**Fix**
+
+Launched Docker Desktop:
+
+```bash
+open -a Docker
+```
+
+Waited for the Docker Desktop app to fully start (whale icon in the menu bar
+stops animating), then re-ran the same `docker run` command — it succeeded,
+pulling the `qdrant/qdrant` image and starting the container with the REST
+API on port 6333 and gRPC on port 6334.
+
+**Takeaway**
+
+On macOS, the `docker` CLI being installed doesn't mean the daemon is running —
+Docker Desktop must be launched and fully initialized first. This is a common
+first-run gotcha that's easy to mistake for a more complex configuration issue.
+
+---
+
+## Issue 5: `ModuleNotFoundError: No module named 'app'` running indexing script directly
+
+**Symptom**
+
+```bash
+python scripts/index_herbs.py
+```
+
+failed with:
+
+```
+Traceback (most recent call last):
+  File "/Users/adolfo/rootsandqi/scripts/index_herbs.py", line 13, in <module>
+    from app.services.herb_retriever import index_herbs
+ModuleNotFoundError: No module named 'app'
+```
+
+**Root cause**
+
+When a script is run directly (`python scripts/index_herbs.py`), Python adds
+only the script's own directory (`scripts/`) to `sys.path` — not the project
+root. Since `app` is a package living at the project root (`~/rootsandqi/app/`),
+it isn't on the path and the import fails, even though the same `app.services...`
+import works fine when FastAPI/uvicorn runs from the project root.
+
+**Fix**
+
+Ran the script as a module from the project root instead, which adds the
+current directory (project root) to `sys.path`:
+
+```bash
+python -m scripts.index_herbs
+```
+
+This succeeded immediately:
+
+```
+Indexing herb knowledge base into Qdrant...
+Done. Indexed 15 herbs into the 'herbs' collection.
+```
+
+**Takeaway**
+
+This is the same underlying category of issue as Issue 3 (Milestone 1's
+uvicorn/PATH problem) — Python's module resolution depends on *how* a program
+is invoked, not just *where* the files live. As a general rule: when working
+with an `app/`-style package layout, prefer `python -m <module.path>` over
+`python <path/to/file.py>` so imports resolve relative to the project root.
+
+---
+
+## Result (Milestone 2)
+
+After resolving both issues:
+
+- Qdrant running locally via Docker (`localhost:6333`), dashboard accessible
+  at `http://localhost:6333/dashboard`
+- `nomic-embed-text` pulled via Ollama for local/free embeddings
+- `python -m scripts.index_herbs` successfully embedded and indexed all 15
+  herbs from `app/data/herbs.json` into Qdrant
+- `POST /diagnose` → `200 OK`, returned the syndrome classification (Qi
+  Deficiency) plus 5 ranked herb recommendations (relevance scores 0.76-0.83),
+  correctly surfacing TCM herbs tagged for `qi_deficiency` and the closely
+  related `yang_deficiency` pattern — confirming the vector retrieval pipeline
+  works end-to-end on real embedded data, not just sample/mock data.
+
+### Known behavior / future improvement
+
+> **Note:** at the time of this test, the `tradition` field used "Caribbean"
+> as the category label; it was later broadened to "Indigenous" to encompass
+> herbal traditions from around the world, not just the Caribbean. The
+> underlying herbs and the observation below are unchanged.
+
+In this test, all 5 top-ranked herbs were from the TCM tradition, even though
+the knowledge base includes Indigenous herbs tagged for `qi_deficiency` and
+`blood_deficiency` (e.g., Moringa). This is not a bug — the embedding model
+likely finds TCM terminology ("Qi deficiency") semantically closer to other
+TCM-described herbs, since the term itself originates in TCM.
+
+A future improvement would be to retrieve top-N results *per tradition*
+separately (e.g., top 3 TCM + top 3 Indigenous) and merge them, guaranteeing
+cross-tradition representation in every response — directly supporting the
+project's core differentiator of bridging both traditions.

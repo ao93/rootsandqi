@@ -7,7 +7,8 @@ app = FastAPI(
     title=settings.app_name,
     description=(
         "AI-powered wellness insights combining Traditional Chinese Medicine "
-        "(TCM) syndrome differentiation with Caribbean herbal traditions."
+        "(TCM) syndrome differentiation with Indigenous herbal traditions from "
+        "around the world."
     ),
     version="0.1.0",
 )

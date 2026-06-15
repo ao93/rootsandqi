@@ -7,7 +7,7 @@ class Herb(BaseModel):
     """
     id: str
     name: str
-    tradition: str = Field(..., description="e.g. TCM, Caribbean, or shared")
+    tradition: str = Field(..., description="e.g. TCM, Indigenous, or shared")
     syndromes: list[str] = Field(
         default_factory=list,
         description="TCMSyndrome values this herb is traditionally associated with"

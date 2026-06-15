@@ -60,14 +60,14 @@ class DiagnosisRequest(BaseModel):
 
 class DiagnosisResponse(BaseModel):
     """
-    Full response from the /diagnose endpoint, including TCM + Caribbean
+    Full response from the /diagnose endpoint, including TCM + Indigenous
     herb recommendations retrieved from the Qdrant knowledge base based
     on the identified syndrome pattern(s).
     """
     classification: SyndromeClassification
     herb_recommendations: list[HerbRecommendation] = Field(
         default_factory=list,
-        description="Herbs (TCM and/or Caribbean) relevant to the identified syndrome pattern"
+        description="Herbs (TCM and/or Indigenous) relevant to the identified syndrome pattern"
     )
     disclaimer: str = (
         "This information is for educational purposes only and is based on "

@@ -20,7 +20,7 @@
   {
     "id": "moringa",
     "name": "Moringa (Moringa oleifera)",
-    "tradition": "Caribbean",
+    "tradition": "Indigenous",
     "syndromes": ["qi_deficiency", "blood_deficiency"],
     "description": "Known across the Caribbean as a highly nutritive leaf used to combat fatigue and general weakness, often brewed as a tea or added to soups. Rich in iron and considered supportive for low energy and anemia-like presentations.",
     "preparation": "Leaf tea, 1-2 cups per day, or dried leaf powder added to food",
@@ -29,7 +29,7 @@
   {
     "id": "soursop_leaf",
     "name": "Soursop Leaf (Graviola)",
-    "tradition": "Caribbean",
+    "tradition": "Indigenous",
     "syndromes": ["heat_damp_heat", "qi_stagnation"],
     "description": "Widely used in Caribbean folk medicine as a calming tea, traditionally taken in the evening to ease tension and support sleep. Associated with cooling overly 'heated' or agitated states.",
     "preparation": "Leaf tea (a few dried leaves steeped in hot water), taken in the evening",
@@ -38,7 +38,7 @@
   {
     "id": "fever_grass",
     "name": "Fever Grass (Lemongrass)",
-    "tradition": "Caribbean",
+    "tradition": "Indigenous",
     "syndromes": ["heat_damp_heat", "cold"],
     "description": "One of the most common Caribbean household remedies, used as a tea for colds, fevers, and digestive discomfort. Traditionally taken hot to induce sweating and 'break' a fever.",
     "preparation": "Fresh or dried leaf/stalk tea, taken hot",
@@ -47,7 +47,7 @@
   {
     "id": "ginger",
     "name": "Ginger (Sheng Jiang / Ginger Root)",
-    "tradition": "TCM and Caribbean (shared)",
+    "tradition": "TCM and Indigenous (shared)",
     "syndromes": ["cold", "dampness", "qi_stagnation"],
     "description": "Used in both TCM and Caribbean traditions as a warming root that supports digestion, dispels 'cold' presentations (cold limbs, poor circulation), and helps move stagnant Qi. Common in teas and cooking across both traditions.",
     "preparation": "Fresh root tea (sliced and steeped), or added to food",
@@ -74,7 +74,7 @@
   {
     "id": "cerasee",
     "name": "Cerasee (Bitter Melon Vine)",
-    "tradition": "Caribbean",
+    "tradition": "Indigenous",
     "syndromes": ["heat_damp_heat", "dampness"],
     "description": "A very bitter Caribbean tea traditionally used as a 'cleansing' tonic, often associated with clearing heat and dampness, supporting digestion, and addressing skin eruptions linked to 'heat' in the blood.",
     "preparation": "Vine and leaf tea, steeped and strained due to bitterness, taken in small amounts",
@@ -92,7 +92,7 @@
   {
     "id": "hibiscus",
     "name": "Hibiscus (Sorrel)",
-    "tradition": "Caribbean",
+    "tradition": "Indigenous",
     "syndromes": ["heat_damp_heat", "blood_stasis"],
     "description": "Known in the Caribbean as 'sorrel,' this tart red flower tea is traditionally associated with cooling the body and supporting circulation. Often consumed seasonally and considered helpful for 'hot' presentations.",
     "preparation": "Dried flower tea, steeped, often sweetened lightly",
@@ -110,7 +110,7 @@
   {
     "id": "noni",
     "name": "Noni",
-    "tradition": "Caribbean",
+    "tradition": "Indigenous",
     "syndromes": ["blood_stasis", "qi_stagnation"],
     "description": "Used in some Caribbean and broader tropical folk traditions as a tonic associated with supporting circulation and general resilience, often taken as a juice or tea despite its strong taste/smell.",
     "preparation": "Fruit juice or tea, small daily amounts",
@@ -128,7 +128,7 @@
   {
     "id": "cinnamon_bark",
     "name": "Cinnamon Bark (Rou Gui / Caribbean Cinnamon Tea)",
-    "tradition": "TCM and Caribbean (shared)",
+    "tradition": "TCM and Indigenous (shared)",
     "syndromes": ["yang_deficiency", "cold"],
     "description": "Used in TCM to warm and tonify Yang, particularly for cold limbs and low circulation, and similarly used in Caribbean households as a warming tea for colds and poor circulation.",
     "preparation": "Small amounts of bark steeped in hot water, or added to other teas",

@@ -11,7 +11,7 @@ router = APIRouter()
 def diagnose(request: DiagnosisRequest) -> DiagnosisResponse:
     """
     Accepts symptom text and an optional tongue observation, runs the
-    syndrome-mapping pipeline, retrieves relevant TCM + Caribbean herbs
+    syndrome-mapping pipeline, retrieves relevant TCM + Indigenous herbs
     from the Qdrant knowledge base based on the identified syndrome
     pattern(s), and returns a structured response with both.
     """

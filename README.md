@@ -1,7 +1,7 @@
 # RootsAndQi
 
 AI-powered wellness insights combining Traditional Chinese Medicine (TCM) syndrome
-differentiation with Caribbean herbal traditions, built on a production-style
+differentiation with Indigenous herbal traditions from around the world, built on a production-style
 FastAPI + LangChain + MLOps + Kubernetes stack.
 
 > **Disclaimer:** This project is for educational and portfolio purposes. It does
@@ -12,13 +12,13 @@ FastAPI + LangChain + MLOps + Kubernetes stack.
 
 Milestone 1 implemented the syndrome-mapping pipeline. Milestone 2 adds:
 
-- A knowledge base of 15 TCM and Caribbean herbs (`app/data/herbs.json`), each
+- A knowledge base of 15 TCM and Indigenous herbs (`app/data/herbs.json`), each
   tagged with the TCM syndrome patterns they're traditionally associated with.
 - A Qdrant-backed vector retrieval layer: herb descriptions are embedded
   (via a local Ollama embedding model) and indexed into Qdrant.
 - `POST /diagnose` now returns `herb_recommendations` alongside the syndrome
   classification — herbs are retrieved by vector similarity to the identified
-  syndrome pattern(s), spanning both TCM and Caribbean traditions.
+  syndrome pattern(s), spanning both TCM and Indigenous traditions.
 - `GET /health` — basic health check.
 
 ## Project Structure
@@ -32,7 +32,7 @@ app/
 │   ├── config.py        # Settings (env vars)
 │   └── prompts.py        # TCM syndrome-mapping system prompt
 ├── data/
-│   └── herbs.json        # TCM + Caribbean herb knowledge base
+│   └── herbs.json        # TCM + Indigenous herb knowledge base
 ├── models/
 │   ├── diagnosis.py      # Pydantic request/response/schema models
 │   └── herb.py           # Herb and HerbRecommendation models
@@ -95,17 +95,24 @@ scripts/
 6. Index the herb knowledge base into Qdrant:
 
    ```bash
-   python scripts/index_herbs.py
+   python -m scripts.index_herbs
    ```
 
    This embeds all 15 herbs from `app/data/herbs.json` and loads them into a
    Qdrant collection. Re-run this any time `herbs.json` is updated.
 
+   > Note: run as a module (`python -m scripts.index_herbs`), not as a script
+   > path (`python scripts/index_herbs.py`) — the latter won't resolve the
+   > `app` package import. See [BUILD_LOG.md](BUILD_LOG.md) for details.
+
 7. Run the API:
 
    ```bash
-   uvicorn app.main:app --reload
+   python -m uvicorn app.main:app --reload
    ```
+
+   > Note: use `python -m uvicorn ...` rather than `uvicorn ...` directly —
+   > see [BUILD_LOG.md](BUILD_LOG.md) for why.
 
 8. Open the interactive docs at `http://localhost:8000/docs`.
 
@@ -125,9 +132,17 @@ curl -X POST http://localhost:8000/diagnose \
   }'
 ```
 
-The response now includes `herb_recommendations` — herbs from both TCM and
-Caribbean traditions retrieved by similarity to the identified syndrome
-pattern(s), each with a `relevance_score`.
+The response now includes `herb_recommendations` — herbs retrieved by vector
+similarity to the identified syndrome pattern(s), each with a `relevance_score`.
+
+> **Known behavior:** retrieval currently ranks all 15 herbs together by
+> similarity, without guaranteeing representation from both traditions. In
+> testing, a `qi_deficiency` query returned only TCM herbs in the top 5, even
+> though Indigenous herbs are tagged for that pattern too — likely because the
+> embedding model finds TCM-originated terminology semantically closer to
+> other TCM-described herbs. A planned improvement is retrieving top-N results
+> *per tradition* and merging them, to guarantee both TCM and Indigenous herbs
+> appear when relevant — directly supporting the project's core differentiator.
 
 ## Expanding the herb knowledge base
 
@@ -150,7 +165,7 @@ entries. To add a new herb:
 ## Roadmap
 
 - [x] Milestone 1: AI diagnostic core (FastAPI + LangChain syndrome mapping)
-- [x] Milestone 2: Caribbean + TCM herb knowledge base (Qdrant retrieval)
+- [x] Milestone 2: Indigenous + TCM herb knowledge base (Qdrant retrieval)
 - [ ] Milestone 3: MLOps layer (MLflow, DVC, Airflow)
 - [ ] Milestone 4: Minimal web UI
 - [ ] Milestone 5: DevOps/infra wrap (Terraform, EKS, CI/CD, Trivy, Prometheus/Grafana)
