@@ -8,17 +8,18 @@ FastAPI + LangChain + MLOps + Kubernetes stack.
 > not provide medical diagnoses and is not a substitute for professional medical
 > care.
 
-## Status: Milestone 1 — AI Diagnostic Core
+## Status: Milestone 2 — Herb Knowledge Base + Retrieval
 
-This milestone implements the syndrome-mapping pipeline:
+Milestone 1 implemented the syndrome-mapping pipeline. Milestone 2 adds:
 
-- `POST /diagnose` — accepts symptom text and an optional structured tongue
-  observation, sends it to Claude via LangChain with a TCM pattern-differentiation
-  system prompt, and returns a structured `SyndromeClassification`.
+- A knowledge base of 15 TCM and Caribbean herbs (`app/data/herbs.json`), each
+  tagged with the TCM syndrome patterns they're traditionally associated with.
+- A Qdrant-backed vector retrieval layer: herb descriptions are embedded
+  (via a local Ollama embedding model) and indexed into Qdrant.
+- `POST /diagnose` now returns `herb_recommendations` alongside the syndrome
+  classification — herbs are retrieved by vector similarity to the identified
+  syndrome pattern(s), spanning both TCM and Caribbean traditions.
 - `GET /health` — basic health check.
-
-Herb recommendations (TCM + Caribbean, via a Qdrant-backed retrieval layer) will be
-added in Milestone 2.
 
 ## Project Structure
 
@@ -30,10 +31,17 @@ app/
 ├── core/
 │   ├── config.py        # Settings (env vars)
 │   └── prompts.py        # TCM syndrome-mapping system prompt
+├── data/
+│   └── herbs.json        # TCM + Caribbean herb knowledge base
 ├── models/
-│   └── diagnosis.py      # Pydantic request/response/schema models
+│   ├── diagnosis.py      # Pydantic request/response/schema models
+│   └── herb.py           # Herb and HerbRecommendation models
 └── services/
-    └── syndrome_mapper.py  # LangChain pipeline: LLM call -> structured output
+    ├── syndrome_mapper.py  # LangChain pipeline: LLM call -> structured output
+    └── herb_retriever.py   # Qdrant indexing + vector retrieval for herbs
+
+scripts/
+└── index_herbs.py       # CLI script to (re)index herbs.json into Qdrant
 ```
 
 ## Setup
@@ -69,14 +77,37 @@ app/
    The pipeline is provider-agnostic via LangChain — switching providers requires
    only an `.env` change, no code changes.
 
-4. Run the API:
+4. Start Qdrant (vector database) via Docker:
+
+   ```bash
+   docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
+   ```
+
+   Leave this running in its own terminal. Qdrant's dashboard is available at
+   `http://localhost:6333/dashboard`.
+
+5. Pull the embedding model (used to vectorize herb descriptions):
+
+   ```bash
+   ollama pull nomic-embed-text
+   ```
+
+6. Index the herb knowledge base into Qdrant:
+
+   ```bash
+   python scripts/index_herbs.py
+   ```
+
+   This embeds all 15 herbs from `app/data/herbs.json` and loads them into a
+   Qdrant collection. Re-run this any time `herbs.json` is updated.
+
+7. Run the API:
 
    ```bash
    uvicorn app.main:app --reload
    ```
 
-
-4. Open the interactive docs at `http://localhost:8000/docs`.
+8. Open the interactive docs at `http://localhost:8000/docs`.
 
 ## Example request
 
@@ -94,11 +125,38 @@ curl -X POST http://localhost:8000/diagnose \
   }'
 ```
 
+The response now includes `herb_recommendations` — herbs from both TCM and
+Caribbean traditions retrieved by similarity to the identified syndrome
+pattern(s), each with a `relevance_score`.
+
+## Expanding the herb knowledge base
+
+The herb knowledge base lives in `app/data/herbs.json` as a simple list of
+entries. To add a new herb:
+
+1. Add a new entry to `app/data/herbs.json` following the existing structure
+   (`id`, `name`, `tradition`, `syndromes`, `description`, `preparation`,
+   `cautions`). `syndromes` values must match the `TCMSyndrome` enum values
+   defined in `app/models/diagnosis.py`.
+2. Re-run the indexing script:
+
+   ```bash
+   python scripts/index_herbs.py
+   ```
+
+   This recreates the Qdrant collection with the updated herb set — no code
+   changes required.
+
 ## Roadmap
 
 - [x] Milestone 1: AI diagnostic core (FastAPI + LangChain syndrome mapping)
-- [ ] Milestone 2: Caribbean + TCM herb knowledge base (Qdrant retrieval)
+- [x] Milestone 2: Caribbean + TCM herb knowledge base (Qdrant retrieval)
 - [ ] Milestone 3: MLOps layer (MLflow, DVC, Airflow)
 - [ ] Milestone 4: Minimal web UI
 - [ ] Milestone 5: DevOps/infra wrap (Terraform, EKS, CI/CD, Trivy, Prometheus/Grafana)
 - [ ] Milestone 6: Compliance docs + polish
+
+## Build Log
+
+For a detailed account of environment setup issues encountered and how they
+were debugged and resolved, see [BUILD_LOG.md](BUILD_LOG.md).

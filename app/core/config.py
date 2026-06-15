@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3"
     ollama_base_url: str = "http://localhost:11434"
 
+    # Embedding model (via Ollama, free/local)
+    embedding_model: str = "nomic-embed-text"
+
+    # Qdrant settings
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_collection: str = "herbs"
+
     app_name: str = "RootsAndQi"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

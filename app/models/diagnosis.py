@@ -1,6 +1,8 @@
 from enum import Enum
 from pydantic import BaseModel, Field
 
+from app.models.herb import HerbRecommendation
+
 
 class TCMSyndrome(str, Enum):
     """
@@ -58,11 +60,15 @@ class DiagnosisRequest(BaseModel):
 
 class DiagnosisResponse(BaseModel):
     """
-    Full response from the /diagnose endpoint.
-    Herb recommendations will be added once the
-    retrieval layer (Qdrant knowledge base) is built.
+    Full response from the /diagnose endpoint, including TCM + Caribbean
+    herb recommendations retrieved from the Qdrant knowledge base based
+    on the identified syndrome pattern(s).
     """
     classification: SyndromeClassification
+    herb_recommendations: list[HerbRecommendation] = Field(
+        default_factory=list,
+        description="Herbs (TCM and/or Caribbean) relevant to the identified syndrome pattern"
+    )
     disclaimer: str = (
         "This information is for educational purposes only and is based on "
         "traditional wellness frameworks. It is not a medical diagnosis and "
