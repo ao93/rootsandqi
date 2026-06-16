@@ -796,3 +796,60 @@ due to Airflow 3.0's underdocumented docker-compose architecture requirements):
   resolving all infrastructure issues
 - The validate → index dependency correctly enforces that Qdrant is never
   updated with invalid data
+
+---
+
+# Milestone 4: Minimal Web UI
+
+## Issue 18: `node_modules/` accidentally staged for git commit
+
+**Symptom**
+
+After running `npm install` in `frontend/` and `git add frontend/`, git staged
+the entire `node_modules/` directory — thousands of files from installed npm
+packages — rather than just the source files.
+
+**Root cause**
+
+`frontend/node_modules/` was not in `.gitignore`. Git has no way to know that
+`node_modules/` is a generated artifact that should be excluded — it only
+excludes what `.gitignore` tells it to.
+
+**Fix**
+
+Added `frontend/node_modules/` to `.gitignore`, then removed node_modules from
+the git index (without deleting the files from disk):
+
+```bash
+echo "frontend/node_modules/" >> .gitignore
+git rm -r --cached frontend/node_modules/
+git add .gitignore frontend/
+git commit -m "Milestone 4: React frontend with TCM + Indigenous herb results UI"
+```
+
+**Takeaway**
+
+Always add `node_modules/` to `.gitignore` before running `npm install` and
+`git add`. The `.gitignore` entry must exist before staging, or node_modules
+will be staged and require `git rm --cached` to unstage. This is the equivalent
+of the Python `.venv/` entry — generated artifact directories must be explicitly
+excluded.
+
+---
+
+## Result (Milestone 4 - Web UI)
+
+- React + Vite frontend at `frontend/`, running on `http://localhost:5173`
+- Symptom textarea with collapsible tongue observation fields (color, coating,
+  shape, moisture) — optional, sent to API only when filled
+- Vite dev proxy: `/diagnose` → `http://localhost:8000`, so no CORS config
+  needed during development
+- Syndrome card: primary pattern (Playfair Display display font), secondary
+  patterns, affected organs as tags, confidence bar (animated fill), reasoning
+- Herb results: two-column layout split by tradition — terracotta left border
+  for TCM herbs, gold left border for Indigenous/Shared herbs — making the
+  two-tradition differentiator visually legible
+- Design tokens: `--forest` (`#1A2E1A`), `--cream` (`#F5EDD6`), `--sage`
+  (`#7BAE7F`), `--terracotta` (`#C4704A`), `--gold` (`#D4A853`)
+- End-to-end verified: symptoms → syndrome classification → herb recommendations
+  displayed in browser, with both TCM and Shared tradition herbs shown
