@@ -8,7 +8,7 @@ FastAPI + LangChain + MLOps + Kubernetes stack.
 > not provide medical diagnoses and is not a substitute for professional medical
 > care.
 
-## Status: Milestone 3 (in progress) — MLOps: Experiment Tracking + Dataset Versioning
+## Status: Milestone 3 — MLOps: Experiment Tracking, Dataset Versioning, Orchestration
 
 Milestones 1-2 implemented the syndrome-mapping pipeline and herb retrieval.
 Milestone 3 adds MLOps tooling:
@@ -34,7 +34,18 @@ Milestone 3 adds MLOps tooling:
   [Expanding the herb knowledge base](#expanding-the-herb-knowledge-base-with-dvc-versioning)
   below.
 
-Airflow (scheduled re-indexing) is planned next within Milestone 3.
+- **Orchestration (Airflow)**: a DAG (`reindex_herb_knowledge_base`) runs
+  daily (or on manual trigger) with two tasks:
+  1. `validate_herbs_data` — validates `herbs.json` against the `Herb` schema,
+     checks every `syndromes` value is a valid `TCMSyndrome`, and checks for
+     duplicate herb IDs
+  2. `index_herbs` — re-indexes the herb knowledge base into Qdrant, but only
+     if validation passed
+
+  This means a bad edit to `herbs.json` (e.g. a typo'd syndrome name) fails
+  the DAG at validation and Qdrant keeps its last-known-good index, rather
+  than silently indexing broken data. See
+  [Running Airflow](#running-airflow) below.
 
 ## Project Structure
 
@@ -58,6 +69,12 @@ app/
 
 scripts/
 └── index_herbs.py       # CLI script to (re)index herbs.json into Qdrant
+
+airflow/
+├── docker-compose.yaml  # Airflow (LocalExecutor) via docker-compose
+├── .env.example          # AIRFLOW_UID setup
+└── dags/
+    └── reindex_herbs_dag.py  # validate_herbs_data -> index_herbs DAG
 ```
 
 ## Setup
@@ -143,6 +160,66 @@ scripts/
    with its params (LLM provider/model, prompt version), metrics (confidence,
    herb relevance scores), and tags (syndrome pattern, herb traditions
    returned).
+
+## Running Airflow
+
+Airflow runs the `reindex_herb_knowledge_base` DAG, which validates
+`app/data/herbs.json` and re-indexes it into Qdrant. It runs via
+docker-compose, separate from the FastAPI app.
+
+**Prerequisites**: Qdrant (Docker) and Ollama must already be running on your
+host machine — Airflow's containers connect to them via
+`host.docker.internal`.
+
+1. Set your `AIRFLOW_UID` (avoids file permission issues):
+
+   ```bash
+   cd airflow
+   cp .env.example .env
+   ```
+
+   Then edit `.env` and set `AIRFLOW_UID` to the output of `id -u` (run that
+   command to get your user ID).
+
+2. Initialize Airflow's metadata database (one-time):
+
+   ```bash
+   docker compose up airflow-init
+   ```
+
+   This also installs the Python packages the DAG needs (`langchain-ollama`,
+   `qdrant-client`, etc.) into the Airflow containers.
+
+3. Start Airflow:
+
+   ```bash
+   docker compose up
+   ```
+
+   This starts Postgres (Airflow's metadata DB), the scheduler, and the
+   webserver. First startup can take a minute or two.
+
+4. Open the Airflow UI at `http://localhost:8081` (login: `airflow` /
+   `airflow`).
+
+5. Find `reindex_herb_knowledge_base` in the DAG list. It's paused by default
+   (`AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'`) — toggle it on, or
+   trigger a single run manually via the "Trigger DAG" (play) button to see
+   it execute immediately.
+
+6. Click into a run to see the two tasks (`validate_herbs_data` ->
+   `index_herbs`) and their logs. A successful run's logs will show the
+   validation summary and "Indexed 15 herbs into Qdrant."
+
+To stop Airflow:
+
+```bash
+docker compose down
+```
+
+> Note: port `8081` is used for Airflow's webserver (not the default `8080`),
+> since `8080`/`8090` can conflict with other local tools — see
+> [BUILD_LOG.md](BUILD_LOG.md) Issue 10.
 
 ## Example request
 
@@ -247,10 +324,10 @@ from Google Drive, and re-indexes Qdrant to match.
 
 - [x] Milestone 1: AI diagnostic core (FastAPI + LangChain syndrome mapping)
 - [x] Milestone 2: Indigenous + TCM herb knowledge base (Qdrant retrieval)
-- [ ] Milestone 3: MLOps layer
+- [x] Milestone 3: MLOps layer
   - [x] MLflow experiment tracking for /diagnose runs
   - [x] DVC dataset versioning for herbs.json (Google Drive remote)
-  - [ ] Airflow scheduled re-indexing
+  - [x] Airflow scheduled re-indexing (validate -> index DAG)
 - [ ] Milestone 4: Minimal web UI
 - [ ] Milestone 5: DevOps/infra wrap (Terraform, EKS, CI/CD, Trivy, Prometheus/Grafana)
 - [ ] Milestone 6: Compliance docs + polish

@@ -6,6 +6,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from app.core.config import settings
+from app.models.diagnosis import TCMSyndrome
 from app.models.herb import Herb, HerbRecommendation
 
 HERBS_DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "herbs.json"
@@ -36,6 +37,53 @@ def _load_herbs() -> list[Herb]:
     with open(HERBS_DATA_PATH, "r", encoding="utf-8") as f:
         raw = json.load(f)
     return [Herb(**entry) for entry in raw]
+
+
+def validate_herbs_data() -> dict:
+    """
+    Validate app/data/herbs.json for use by the Airflow data-quality task.
+
+    Checks:
+    - The file is valid JSON and each entry matches the Herb schema
+      (via Pydantic - raises if not)
+    - Every value in each herb's `syndromes` list is a valid TCMSyndrome
+      enum value
+    - No duplicate herb `id` values
+
+    Returns a summary dict on success. Raises ValueError with a descriptive
+    message on any validation failure, so Airflow marks the task as failed
+    and the downstream indexing task does not run.
+    """
+    herbs = _load_herbs()  # raises via Pydantic if schema is invalid
+
+    valid_syndromes = {s.value for s in TCMSyndrome}
+    seen_ids = set()
+    errors = []
+
+    for herb in herbs:
+        if herb.id in seen_ids:
+            errors.append(f"Duplicate herb id: '{herb.id}'")
+        seen_ids.add(herb.id)
+
+        invalid_syndromes = [s for s in herb.syndromes if s not in valid_syndromes]
+        if invalid_syndromes:
+            errors.append(
+                f"Herb '{herb.id}' has invalid syndrome value(s): {invalid_syndromes} "
+                f"(must be one of {sorted(valid_syndromes)})"
+            )
+
+    if errors:
+        raise ValueError(
+            f"herbs.json validation failed with {len(errors)} error(s):\n"
+            + "\n".join(f"  - {e}" for e in errors)
+        )
+
+    return {
+        "herb_count": len(herbs),
+        "unique_ids": len(seen_ids),
+        "traditions": sorted({h.tradition for h in herbs}),
+    }
+
 
 
 def _herb_to_text(herb: Herb) -> str:

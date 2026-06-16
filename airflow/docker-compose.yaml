@@ -1,0 +1,138 @@
+# Airflow docker-compose for RootsAndQi (Milestone 3)
+#
+# Uses Airflow 2.10 (stable, well-supported for LocalExecutor + docker-compose).
+# Based on the official Apache Airflow 2.10 docker-compose template, simplified
+# to LocalExecutor (no Redis/Celery/workers needed for single-machine use).
+#
+# Usage:
+#   cd airflow
+#   echo "AIRFLOW_UID=$(id -u)" > .env
+#   docker compose up airflow-init   # one-time DB init + user creation
+#   docker compose up -d             # start all services
+#   Open http://localhost:8081 (user: airflow, password: airflow)
+#
+# To stop:
+#   docker compose down
+
+x-airflow-common:
+  &airflow-common
+  image: apache/airflow:2.10.4
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+    # Packages installed into every Airflow container on startup via the
+    # official Airflow entrypoint mechanism (no entrypoint override needed).
+    _PIP_ADDITIONAL_REQUIREMENTS: >-
+      langchain==0.3.14
+      langchain-core==0.3.30
+      langchain-ollama==0.2.2
+      qdrant-client==1.12.1
+      pydantic==2.10.4
+      pydantic-settings==2.7.0
+      python-dotenv==1.0.1
+    # RootsAndQi service URLs - point at HOST machine since Qdrant/Ollama
+    # run there, not inside this compose network.
+    QDRANT_URL: http://host.docker.internal:6333
+    OLLAMA_BASE_URL: http://host.docker.internal:11434
+    LLM_PROVIDER: ollama
+    MLFLOW_TRACKING_URI: /opt/airflow/rootsandqi/mlruns
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    # Mount the RootsAndQi app so DAGs can import app.services.*
+    - ../app:/opt/airflow/rootsandqi/app
+  user: "${AIRFLOW_UID:-50000}:0"
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  depends_on:
+    &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow version
+        echo "Migrating DB..."
+        airflow db migrate
+        echo "Installing extra Python packages for RootsAndQi DAGs..."
+        pip install --no-cache-dir \
+          langchain==0.3.14 \
+          langchain-core==0.3.30 \
+          langchain-ollama==0.2.2 \
+          qdrant-client==1.12.1 \
+          pydantic==2.10.4 \
+          pydantic-settings==2.7.0 \
+          python-dotenv==1.0.1
+        airflow users create \
+          --username airflow \
+          --firstname airflow \
+          --lastname airflow \
+          --role Admin \
+          --email airflow@example.com \
+          --password airflow || true
+        echo "Init complete."
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+    user: "0:0"
+
+volumes:
+  postgres-db-volume:
