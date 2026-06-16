@@ -15,3 +15,4 @@ airflow/logs/*
 airflow/plugins/*
 !airflow/plugins/.gitkeep
 airflow/.env
+frontend/node_modules/

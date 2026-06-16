@@ -1,0 +1,49 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --forest: #1A2E1A;
+  --forest-mid: #243824;
+  --forest-light: #2E4A2E;
+  --cream: #F5EDD6;
+  --cream-muted: #C8BEA4;
+  --sage: #7BAE7F;
+  --sage-dark: #5A8A5E;
+  --terracotta: #C4704A;
+  --terracotta-light: #E8A882;
+  --gold: #D4A853;
+  --gold-light: #EAC97A;
+  --error: #E05C5C;
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--forest);
+  color: var(--cream);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+button {
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+
+input, textarea, select {
+  font-family: var(--font-body);
+}
+
+::selection {
+  background: var(--sage);
+  color: var(--forest);
+}
