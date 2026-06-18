@@ -853,3 +853,212 @@ excluded.
   (`#7BAE7F`), `--terracotta` (`#C4704A`), `--gold` (`#D4A853`)
 - End-to-end verified: symptoms → syndrome classification → herb recommendations
   displayed in browser, with both TCM and Shared tradition herbs shown
+
+---
+
+# Milestone 5: DevOps/Infra — Terraform, EKS, CI/CD, Prometheus/Grafana
+
+## Issue 19: ARM64 vs AMD64 platform mismatch
+
+**Symptom**
+
+EKS pods showed `ErrImagePull` with error:
+`no match for platform in manifest: not found`
+
+**Root cause**
+
+The Docker image was built on an Apple Silicon Mac (ARM64 architecture) but
+EKS worker nodes run on x86_64 (AMD64). The image was incompatible with the
+node architecture.
+
+**Fix**
+
+Rebuilt the image explicitly for AMD64:
+```bash
+docker buildx build --platform linux/amd64 -t rootsandqi:amd64 .
+docker tag rootsandqi:amd64 445160884854.dkr.ecr.us-east-2.amazonaws.com/rootsandqi-api:latest
+docker push 445160884854.dkr.ecr.us-east-2.amazonaws.com/rootsandqi-api:latest
+```
+
+**Takeaway**
+
+Always build with `--platform linux/amd64` when targeting EKS or any x86_64
+cloud environment from an Apple Silicon Mac. The GitHub Actions pipeline
+handles this automatically with `--platform linux/amd64` in the build step.
+
+---
+
+## Issue 20: t3.micro Free Tier restriction
+
+**Symptom**
+
+EKS node group failed with `CREATE_FAILED`:
+`AsgInstanceLaunchFailures: InvalidParameterCombination - The specified
+instance type is not eligible for Free Tier`
+
+**Root cause**
+
+The AWS account is restricted to Free Tier eligible instance types.
+t3.medium is not Free Tier eligible.
+
+**Fix**
+
+Changed `node_instance_type` in `variables.tf` from `t3.medium` to `t3.micro`.
+Later upgraded to `t3.small` when Prometheus/Grafana required more memory.
+
+---
+
+## Issue 21: t3.micro insufficient memory for observability stack
+
+**Symptom**
+
+Prometheus and Grafana pods stuck in `Pending` state with:
+`0/2 nodes are available: 2 Insufficient memory`
+
+**Root cause**
+
+t3.micro has only 1GB RAM per node. With Qdrant + FastAPI already running,
+there was insufficient memory to schedule Prometheus and Grafana pods.
+
+**Fix**
+
+Upgraded node instance type from `t3.micro` to `t3.small` (2GB RAM) via
+Terraform:
+```bash
+# variables.tf: t3.micro → t3.small
+terraform apply -auto-approve
+```
+
+---
+
+## Issue 22: Prometheus PersistentVolumeClaim unbound
+
+**Symptom**
+
+`prometheus-server` pod stuck in `Pending` with:
+`pod has unbound immediate PersistentVolumeClaims`
+
+**Root cause**
+
+The default Prometheus Helm chart creates a PersistentVolumeClaim for storage,
+but EKS doesn't have a default StorageClass configured that can provision
+volumes automatically without additional setup (EBS CSI driver).
+
+**Fix**
+
+Disabled persistent storage in the Prometheus Helm installation:
+```bash
+helm upgrade prometheus prometheus-community/prometheus \
+  --namespace monitoring \
+  --set server.persistentVolume.enabled=false \
+  --set server.resources.requests.memory=256Mi \
+  --set server.resources.limits.memory=512Mi
+```
+
+**Takeaway**
+
+EKS requires the EBS CSI driver add-on to support dynamic PVC provisioning.
+For a portfolio project, disabling persistence is acceptable. In production,
+install the EBS CSI driver and use a proper StorageClass.
+
+---
+
+## Issue 23: GitHub Actions `aws-region` not supplied error
+
+**Symptom**
+
+CI/CD pipeline failed on Build & Push job:
+`Input required and not supplied: aws-region`
+
+**Root cause**
+
+The `configure-aws-credentials` action requires `aws-region` as a direct
+input parameter — it cannot be read from environment variables or secrets
+at the action input level.
+
+**Fix**
+
+Hardcoded `aws-region: us-east-2` directly in the workflow YAML instead of
+referencing it via `${{ secrets.AWS_REGION }}`.
+
+---
+
+## Issue 24: CI/CD deploy step image output masked as secret
+
+**Symptom**
+
+Deploy job failed:
+`failed to patch image update to pod template: Required value`
+
+**Root cause**
+
+The image URL was passed between jobs via `outputs`, but GitHub Actions
+automatically masks values that look like secrets (containing registry URLs
+with account IDs). The output was redacted to empty string.
+
+**Fix**
+
+Used environment variables defined at the job level instead of job outputs:
+```yaml
+env:
+  ECR_REGISTRY: 445160884854.dkr.ecr.us-east-2.amazonaws.com
+  ECR_REPOSITORY: rootsandqi-api
+
+run: |
+  IMAGE=$ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
+  kubectl set image deployment/rootsandqi-api api=$IMAGE -n rootsandqi
+```
+
+---
+
+## Issue 25: Anthropic API key accidentally exposed in chat
+
+**Symptom**
+
+API key was pasted into the chat interface during the secret creation command,
+making it visible in conversation history.
+
+**Root cause**
+
+Multi-line kubectl command was copied into chat before running in terminal.
+
+**Fix**
+
+Immediately rotated the key at console.anthropic.com — deleted the exposed
+key and created a new one. Updated the Kubernetes secret with the new key.
+
+**Takeaway**
+
+Never paste secrets into chat interfaces or commit them to git. Use
+`kubectl create secret` directly in terminal. In CI/CD, use GitHub Actions
+secrets — the pipeline now manages the Kubernetes secret automatically on
+every deploy.
+
+---
+
+## Result (Milestone 5 — DevOps/Infra)
+
+**Infrastructure (Terraform):**
+- VPC (10.0.0.0/16), 2 public + 2 private subnets across 2 AZs
+- NAT Gateway for private node egress
+- EKS cluster (Kubernetes 1.31), node group (2x t3.small)
+- ECR repository with scan-on-push and 10-image lifecycle policy
+- IAM roles for cluster and node group
+
+**Application deployment (Kubernetes):**
+- FastAPI backend running on EKS, exposed via AWS LoadBalancer
+- Qdrant vector database running as ClusterIP service
+- Kubernetes secret for Anthropic API key
+- Health checks (readiness + liveness probes)
+
+**CI/CD (GitHub Actions):**
+- 4-job pipeline: Lint → Trivy scan → Build & push to ECR → Deploy to EKS
+- Triggers on every push to main
+- AMD64 image built on GitHub runners, pushed to ECR with git SHA tag
+- Automatic Kubernetes secret rotation on every deploy
+
+**Observability (Helm):**
+- Prometheus scraping cluster metrics (no persistence, memory-optimized)
+- Grafana with Prometheus data source connected
+- Kubernetes cluster monitoring dashboard (ID 3119) showing live metrics
+- Cluster memory at 44.8% (1.67 GiB / 3.74 GiB) across 2 nodes
