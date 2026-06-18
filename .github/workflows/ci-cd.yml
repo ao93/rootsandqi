@@ -1,10 +1,6 @@
 # ── RootsAndQi CI/CD Pipeline ─────────────────────────────────────────────────
 # Triggered on every push to main.
 # Jobs: lint → trivy scan → build & push to ECR → deploy to EKS
-#
-# Required GitHub Secrets:
-#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
-#   ECR_REPOSITORY, EKS_CLUSTER_NAME, ANTHROPIC_API_KEY
 
 name: CI/CD Pipeline
 
@@ -15,8 +11,8 @@ on:
     branches: [main]
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
-  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+  AWS_REGION: us-east-2
+  ECR_REGISTRY: 445160884854.dkr.ecr.us-east-2.amazonaws.com
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -74,7 +70,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-2
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -82,15 +78,12 @@ jobs:
 
       - name: Build, tag, and push image to ECR
         id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
         run: |
-          docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          docker build --platform linux/amd64 -t $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest
+          docker push $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
+          docker push $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest
+          echo "image=$ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   # ── Job 4: Deploy to EKS ────────────────────────────────────────────────────
   deploy:
@@ -106,13 +99,16 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-2
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
 
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig \
             --name ${{ secrets.EKS_CLUSTER_NAME }} \
-            --region ${{ secrets.AWS_REGION }}
+            --region us-east-2
 
       - name: Update Anthropic API key secret
         run: |
@@ -122,8 +118,6 @@ jobs:
             --from-literal=anthropic-api-key=${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Deploy to EKS
-        env:
-          ECR_REGISTRY: ${{ needs.build-and-push.outputs.image }}
         run: |
           kubectl apply -f infra/k8s/namespace.yaml
           kubectl apply -f infra/k8s/qdrant.yaml
