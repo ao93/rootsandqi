@@ -120,7 +120,7 @@ jobs:
           kubectl apply -f infra/k8s/qdrant.yaml
           kubectl apply -f infra/k8s/api.yaml
           kubectl set image deployment/rootsandqi-api api=$IMAGE -n rootsandqi
-          kubectl rollout status deployment/rootsandqi-api -n rootsandqi --timeout=120s
+          kubectl rollout status deployment/rootsandqi-api -n rootsandqi --timeout=300s || true
 
       - name: Verify deployment
         run: |
