@@ -213,6 +213,23 @@ cd infra/terraform && terraform destroy -auto-approve
 - [x] Milestone 5 — AWS EKS deployment (Terraform, CI/CD, Trivy, Prometheus/Grafana)
 - [x] Milestone 6 — Compliance docs + polish
 
+
+---
+
+## 📸 Screenshots
+
+### App — Diagnosis Result
+![Diagnosis Result](docs/images/diagnosis-result.png)
+
+### App — Herb Recommendations
+![Herb Recommendations](docs/images/herb-recommendations.png)
+
+### CI/CD Pipeline — All Jobs Green
+![GitHub Actions Pipeline](docs/images/github-actions-pipeline.png)
+
+### Observability — Grafana Dashboard (Live EKS Metrics)
+![Grafana Dashboard](docs/images/grafana-dashboard.png)
+
 ---
 
 ## 👨‍💻 Engineer
